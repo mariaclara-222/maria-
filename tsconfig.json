@@ -5,6 +5,8 @@
     "target": "es2022",
     "types": [],
     "moduleResolution": "nodenext",
+    "rootDir"; "./src",
+    "outDir"; "./dist",
     "sourceMap": true,
     "declaration": true,
     "declarationMap": true,
