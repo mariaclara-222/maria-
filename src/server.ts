@@ -48,20 +48,10 @@ app.post('/usuarios', async (req, res) => {
       if (emailExistente.length > 0) {
         return res.status(409).json({ error: 'Este e-mail já está cadastrado.' });
       }
-     
-      // 3.1 Verifica se o CPF já está em uso (Evita quebra por Primary Key)
-      const [cpfExistente]: any = await pool.query(
-        'SELECT ID FROM `criar conta` WHERE ID = ?',
-        [cpf]
-      );
-     
-      if (cpfExistente.length > 0) {
-        return res.status(409).json({ error: 'Este ID já está cadastrado.' });
-      }
    
     // 5. Salva o usuário no banco
     const queryInsercao = 'INSERT INTO `criar conta` (NOME, EMAIL, SENHA, TELEFONE) VALUES (?, ?, ?, ?)';
-    const [result]: any = await pool.query(queryInsercao, [nome, email, senha, TELEFONE]);
+    const [result]: any = await pool.query(queryInsercao, [nome, email, senha, telefone]);
 
     // Retorna 201 Created sem expor a senha
     res.status(201).json({
