@@ -17,7 +17,6 @@ app.use(express.json())
 
 
 
-
 // ================= ROTA PARA CADASTRAR USUÁRIO =================
 app.post('/usuarios', async (req, res) => {
   const { nome, email, senha, telefone } = req.body;
@@ -28,30 +27,31 @@ app.post('/usuarios', async (req, res) => {
   }
 
   try {
-    // 2. Garante que a tabela de usuários existe
+    // 2. Garante que a tabela de usuários existe (agora com TELEFONE)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS \`criar conta\` (
         ID INT PRIMARY KEY AUTO_INCREMENT,
         NOME VARCHAR(255) NOT NULL,
         EMAIL VARCHAR(255) NOT NULL UNIQUE,
         SENHA VARCHAR(255) NOT NULL,
+        TELEFONE VARCHAR(20),
         DATA_CADASTRO TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-        // 3. Verifica se o e-mail já está em uso
-      const [emailExistente]: any = await pool.query(
-        'SELECT ID FROM `criar conta` WHERE EMAIL = ?',
-        [email]
-      );
-     
-      if (emailExistente.length > 0) {
-        return res.status(409).json({ error: 'Este e-mail já está cadastrado.' });
-      }
+    // 3. Verifica se o e-mail já está em uso
+    const [emailExistente]: any = await pool.query(
+      'SELECT ID FROM `criar conta` WHERE EMAIL = ?',
+      [email]
+    );
    
-    // 5. Salva o usuário no banco
+    if (emailExistente.length > 0) {
+      return res.status(409).json({ error: 'Este e-mail já está cadastrado.' });
+    }
+ 
+    // 4. Salva o usuário no banco (usando null caso telefone venha vazio)
     const queryInsercao = 'INSERT INTO `criar conta` (NOME, EMAIL, SENHA, TELEFONE) VALUES (?, ?, ?, ?)';
-    const [result]: any = await pool.query(queryInsercao, [nome, email, senha, telefone]);
+    const [result]: any = await pool.query(queryInsercao, [nome, email, senha, telefone || null]);
 
     // Retorna 201 Created sem expor a senha
     res.status(201).json({
@@ -67,6 +67,7 @@ app.post('/usuarios', async (req, res) => {
     res.status(500).json({ error: 'Erro interno ao salvar o usuário.' });
   }
 });
+
 
 // ================= ROTA PARA INSERIR PRODUTO (E CRIAR A TABELA SE NÃO EXISTIR) =================
 app.post('/produtos', async (req, res) => {
