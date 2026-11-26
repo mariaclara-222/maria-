@@ -22,7 +22,7 @@ app.get('/', (req: Request, res: Response) => {
 });
 
 // ==========================================
-// ROTA PARA CADASTRAR USUÁRIO (SUA ROTA ORIGINAL)
+// ROTA PARA CADASTRAR USUÁRIO
 // ==========================================
 app.post('/usuarios', async (req: Request, res: Response) => {
   const { nome, email, senha, telefone } = req.body;
@@ -106,7 +106,7 @@ app.post('/login', async (req: Request, res: Response) => {
 });
 
 // ==========================================
-// ROTA PARA INSERIR PRODUTO NO CATÁLOGO (SUA ROTA ORIGINAL)
+// ROTA PARA INSERIR PRODUTO NO CATÁLOGO
 // ==========================================
 app.post('/produtos', async (req: Request, res: Response) => {
   const { nome, preco } = req.body;
@@ -136,7 +136,7 @@ app.post('/produtos', async (req: Request, res: Response) => {
 });
 
 // ==========================================
-// ROTA PARA VISUALIZAR OS PRODUTOS (SUA ROTA ORIGINAL)
+// ROTA PARA VISUALIZAR OS PRODUTOS DO CATÁLOGO
 // ==========================================
 app.get('/produtos', async (req: Request, res: Response) => {
   try {
@@ -155,12 +155,15 @@ app.get('/produtos', async (req: Request, res: Response) => {
 });
 
 // ==========================================
-// GARANTIR TABELA DE PEDIDOS
+// FUNÇÃO AUXILIAR: GARANTIR TABELA DE PEDIDOS
 // ==========================================
 async function garantirTabelaPedidos() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS \`pedidos\` (
       id VARCHAR(100) PRIMARY KEY,
+      user_id VARCHAR(100),
+      user_name VARCHAR(255),
+      user_email VARCHAR(255),
       customer_name VARCHAR(255) NOT NULL,
       customer_type VARCHAR(20) DEFAULT 'PJ',
       document VARCHAR(100),
@@ -188,6 +191,19 @@ async function garantirTabelaPedidos() {
       criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  const colunasExtras = [
+    { nome: 'user_id', tipo: 'VARCHAR(100)' },
+    { nome: 'user_name', tipo: 'VARCHAR(255)' },
+    { nome: 'user_email', tipo: 'VARCHAR(255)' },
+  ];
+  for (const col of colunasExtras) {
+    try {
+      await pool.query(`ALTER TABLE \`pedidos\` ADD COLUMN \`${col.nome}\` ${col.tipo}`);
+    } catch {
+      // Já existe a coluna
+    }
+  }
 }
 
 // ==========================================
@@ -200,6 +216,9 @@ app.get('/pedidos', async (req: Request, res: Response) => {
     const [rows]: any = await pool.query(`
       SELECT 
         id,
+        user_id AS userId,
+        user_name AS userName,
+        user_email AS userEmail,
         customer_name AS customerName,
         customer_type AS customerType,
         document,
@@ -229,7 +248,6 @@ app.get('/pedidos', async (req: Request, res: Response) => {
       ORDER BY criado_em DESC
     `);
 
-    // Faz o parse dos produtos pedidos (JSON) para array
     const pedidosFormatados = rows.map((p: any) => ({
       ...p,
       subtotal: Number(p.subtotal) || 0,
@@ -246,7 +264,128 @@ app.get('/pedidos', async (req: Request, res: Response) => {
 });
 
 // ==========================================
-// ROTA: REGISTRAR NOVO PEDIDO (FEITO PELO APP)
+// ROTA: BUSCAR PEDIDOS DE UM USUÁRIO (CLIENTE LOGADO)
+// ==========================================
+app.get('/pedidos/usuario/:identificador', async (req: Request, res: Response) => {
+  const { identificador } = req.params;
+
+  try {
+    await garantirTabelaPedidos();
+
+    const [rows]: any = await pool.query(`
+      SELECT 
+        id,
+        user_id AS userId,
+        user_name AS userName,
+        user_email AS userEmail,
+        customer_name AS customerName,
+        customer_type AS customerType,
+        document,
+        email,
+        phone,
+        order_date AS orderDate,
+        status,
+        subtotal,
+        freight,
+        total,
+        currency,
+        payment_method AS paymentMethod,
+        payment_status AS paymentStatus,
+        incoterm,
+        pickup_location AS pickupLocation,
+        carrier,
+        tracking_code AS trackingCode,
+        current_location AS currentLocation,
+        delivery_forecast AS deliveryForecast,
+        destination_city AS destinationCity,
+        destination_state AS destinationState,
+        destination_country AS destinationCountry,
+        notes,
+        items,
+        criado_em AS criadoEm
+      FROM \`pedidos\`
+      WHERE user_email = ? OR email = ? OR user_id = ?
+      ORDER BY criado_em DESC
+    `, [identificador, identificador, identificador]);
+
+    const pedidosFormatados = rows.map((p: any) => ({
+      ...p,
+      subtotal: Number(p.subtotal) || 0,
+      freight: Number(p.freight) || 0,
+      total: Number(p.total) || 0,
+      items: typeof p.items === 'string' ? JSON.parse(p.items) : (p.items || []),
+    }));
+
+    res.json(pedidosFormatados);
+  } catch (error: any) {
+    console.error('Erro ao buscar pedidos do usuário:', error);
+    res.status(500).json({ error: 'Erro ao consultar pedidos do usuário.' });
+  }
+});
+
+// ==========================================
+// ROTA: BUSCAR UM PEDIDO POR ID
+// ==========================================
+app.get('/pedidos/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    await garantirTabelaPedidos();
+
+    const [rows]: any = await pool.query(`
+      SELECT 
+        id,
+        user_id AS userId,
+        user_name AS userName,
+        user_email AS userEmail,
+        customer_name AS customerName,
+        customer_type AS customerType,
+        document,
+        email,
+        phone,
+        order_date AS orderDate,
+        status,
+        subtotal,
+        freight,
+        total,
+        currency,
+        payment_method AS paymentMethod,
+        payment_status AS paymentStatus,
+        incoterm,
+        pickup_location AS pickupLocation,
+        carrier,
+        tracking_code AS trackingCode,
+        current_location AS currentLocation,
+        delivery_forecast AS deliveryForecast,
+        destination_city AS destinationCity,
+        destination_state AS destinationState,
+        destination_country AS destinationCountry,
+        notes,
+        items
+      FROM \`pedidos\`
+      WHERE id = ?
+    `, [id]);
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(404).json({ error: 'Pedido não encontrado.' });
+    }
+
+    const p = rows[0];
+    res.json({
+      ...p,
+      subtotal: Number(p.subtotal) || 0,
+      freight: Number(p.freight) || 0,
+      total: Number(p.total) || 0,
+      items: typeof p.items === 'string' ? JSON.parse(p.items) : (p.items || []),
+    });
+  } catch (error: any) {
+    console.error('Erro ao buscar pedido:', error);
+    res.status(500).json({ error: 'Erro interno ao consultar pedido.' });
+  }
+});
+
+// ==========================================
+// ROTA: REGISTRAR/SALVAR NOVO PEDIDO (VEM DO APP)
 // ==========================================
 app.post('/pedidos', async (req: Request, res: Response) => {
   const pedido = req.body;
@@ -260,14 +399,21 @@ app.post('/pedidos', async (req: Request, res: Response) => {
 
     const itemsJson = JSON.stringify(pedido.items || []);
 
+    const userId = pedido.userId || pedido.user_id || null;
+    const userName = pedido.userName || pedido.user_name || pedido.customerName || null;
+    const userEmail = pedido.userEmail || pedido.user_email || pedido.email || null;
+
     const sql = `
       INSERT INTO \`pedidos\` (
-        id, customer_name, customer_type, document, email, phone, order_date, status,
+        id, user_id, user_name, user_email, customer_name, customer_type, document, email, phone, order_date, status,
         subtotal, freight, total, currency, payment_method, payment_status, incoterm,
         pickup_location, carrier, tracking_code, current_location, delivery_forecast,
         destination_city, destination_state, destination_country, notes, items
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
+        user_id = VALUES(user_id),
+        user_name = VALUES(user_name),
+        user_email = VALUES(user_email),
         customer_name = VALUES(customer_name),
         customer_type = VALUES(customer_type),
         document = VALUES(document),
@@ -296,6 +442,9 @@ app.post('/pedidos', async (req: Request, res: Response) => {
 
     await pool.query(sql, [
       pedido.id,
+      userId,
+      userName,
+      userEmail,
       pedido.customerName,
       pedido.customerType || 'PJ',
       pedido.document || null,
@@ -385,7 +534,7 @@ app.delete('/pedidos/:id', async (req: Request, res: Response) => {
 });
 
 // ==========================================
-// ROTA PARA DESCOBRIR TABELAS DO BANCO (SUA ROTA ORIGINAL)
+// ROTA PARA DESCOBRIR TABELAS DO BANCO
 // ==========================================
 app.get('/descobrir-tabelas', async (req: Request, res: Response) => {
   try {
